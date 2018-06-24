@@ -1,0 +1,176 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp:
+  name: spring-framework-petclinic
+  labels:
+    app: spring-framework-petclinic
+objects:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    creationTimestamp:
+    generation: 1
+    name: "${NAME}"
+  spec:
+    replicas: 1
+    selector:
+      app: "${NAME}"
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        annotations:
+          prometheus.io/scrape: 'true'
+        creationTimestamp:
+        labels:
+          app: "${NAME}"
+      spec:
+        containers:
+        - env:
+          - name: LOGGER_LEVEL
+            value: info
+          - name: PORT
+            value: '8080'
+          - name: APP_ENV
+            value: dev
+          - name: WORKSPACE
+            value: "/tmp"
+          - name: AMQP_HOST
+            value: loyalty-rabbitmq
+          - name: AMQP_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                key: username
+                name: loyalty-rabbitmq-credentials
+          - name: AMQP_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                key: password
+                name: loyalty-rabbitmq-credentials
+          - name: AMQP_PROCESSING_QUEUE
+            value: dev.etl_processing
+          - name: AMQP_UPLOADER_QUEUE
+            value: dev.etl_uploader
+          - name: AMQP_ERROR_QUEUE
+            value: dev.etl_processing_error
+          - name: CONTENT_MANAGER_UPSTREAM
+            value: http://v4-content-manager:8080
+          - name: CORE_UPSTREAM
+            value: http://blp-core:8080
+          - name: PARTICIPATION_UPSTREAM
+            value: http://loyalty-participation-service-v4:8080
+          - name: ETL_POINT_CAP
+            value: '20'
+          - name: MAX_CONCURRENCT_COLLECTS
+            value: '5'
+          image: docker-registry.default.svc:5000/build/${NAME}:${SERVTAG}
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: "/health"
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: "${NAME}"
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: "/health"
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: "${MEMORY_LIMIT}"
+          terminationMessagePath: "/dev/termination-log"
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+    test: false
+    triggers:
+      - type: ConfigChange
+      - imageChangeParams:
+          automatic: true
+          containerNames:
+            - "${NAME}"
+          from:
+            kind: ImageStreamTag
+            name: "${NAME}:${SERVTAG}"
+            namespace: build
+        type: ImageChange
+      - type: ConfigChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: "${NAME}"
+    name: "${NAME}"
+  spec:
+    clusterIP:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: "${NAME}"
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: 'true'
+    labels:
+      app: "${NAME}"
+    name: "${NAME}"
+  spec:
+    port:
+      targetPort: 8080-tcp
+    to:
+      kind: Service
+      name: "${NAME}"
+      weight: 100
+    wildcardPolicy: None
+parameters:
+- name: NAME
+  displayName: Name
+  description: The name assigned to all of the frontend objects defined in this template.
+  required: true
+  value: spring-framework-petclinic
+- name: NAMESPACE
+  displayName: Namespace
+  description: The OpenShift Namespace where the ImageStream resides.
+  required: true
+  value: build
+- name: MEMORY_LIMIT
+  displayName: Memory Limit
+  description: Maximum amount of memory the Node.js container can use.
+  required: true
+  value: 512Mi
+- name: SERVTAG
+  displayName: Service Tag
+  description: The Tag that will be attached to the Docker image, if left blank a value will be defaulted.
+  value: v4.x.y-SNAPSHOT

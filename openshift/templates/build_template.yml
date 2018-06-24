@@ -1,0 +1,108 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: spring-framework-petclinic
+  annotations:
+    description: Maven3 template
+    iconClass: icon-java
+    openshift.io/long-description: This template defines resources needed to develop a Maven application, including a build configuration.
+    template.openshift.io/bindable: 'false'
+  labels:
+    app: spring-framework-petclinic
+message: 'The following service(s) have been created in your project: ${NAME}}.'
+objects:
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    namespace: build
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: null
+    labels:
+      app: spring-framework-petclinic
+    name: spring-framework-petclinic
+  spec:
+    lookupPolicy:
+      local: false
+  status:
+    dockerImageRepository: ""
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    creationTimestamp: null
+    labels:
+      app: spring-framework-petclinic
+    name: spring-framework-petclinic
+  spec:
+    nodeSelector: null
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${NAME}:latest
+    postCommit: {}
+    resources: {}
+    source:
+      git:
+        uri: "${SOURCE_REPOSITORY_URI}"
+        ref: "${SOURCE_REPOSITORY_REF}"
+      contextDir: "${CONTEXT_DIR}"
+      sourceSecret:
+        name: sshsecret
+      type: Git
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: wildfly:9.0
+          namespace: openshift
+        env:
+        - name: MAVEN_MIRROR_URL
+          value: "${MAVEN_MIRROR_URL}"
+      type: Source
+    triggers:
+    - github:
+        secret: "${GITHUB_WEBHOOK_SECRET}"
+      type: GitHub
+    - generic:
+        secret: ${GENERIC_WEBHOOK_SECRET}"
+      type: Generic
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+  status:
+    lastVersion: 0
+parameters:
+- name: NAME
+  displayName: Name
+  description: The name assigned to all of the frontend objects defined in this template.
+  required: true
+  value: 'spring-framework-petclinic'
+- name: NAMESPACE
+  displayName: Namespace
+  description: The OpenShift Namespace where the ImageStream resides.
+  required: true
+  value: openshift
+- name: MEMORY_LIMIT
+  displayName: Memory Limit
+  description: Maximum amount of memory the Node.js container can use.
+  required: true
+  value: 512Mi
+- name: SOURCE_REPOSITORY_URI
+  displayName: Git Repository URI
+  description: The URI of the repository with your application source code.
+  required: true
+  value: git@github.com:spring-petclinic/spring-framework-petclinic.git
+- name: SOURCE_REPOSITORY_REF
+  displayName: Git Reference
+  description: Set this to a branch name, tag or other ref of your repository if you are not using the default branch.
+- name: CONTEXT_DIR
+  displayName: Context Directory
+  description: Set this to the relative path to your project if it is not in the root of your repository.
+- name: SERVTAG
+  displayName: Service Tag
+  description: The Tag that will be attached to the Docker image, if left blank a value will be defaulted.
+  value: v4.x.y-SNAPSHOT
+- name: MAVEN_MIRROR_URL
+  displayName: Custom Maven Mirror URL
+  description: The custom Maven mirror URL
+  value: http://nexus.cicd.svc:8081/repository/maven-public/
